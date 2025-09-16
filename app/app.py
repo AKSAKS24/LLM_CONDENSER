@@ -189,14 +189,21 @@ def condense_text(
 # API
 # ------------------------------
 @app.post("/condense", response_model=List[CondenseOut])
-async def api_condense(bodies: List[CondenseIn]):
-    # Run condense_text for each entry in the input list
-    return [
-        condense_text(
-            src_table=body.llm_prompt,
-            keep_sections=body.keep_sections,
-            include_notes=body.include_notes,
-            max_bullets=body.max_bullets,
-        )
-        for body in bodies
-    ]
+async def api_condense(llm_prompt: List[str]):
+    """
+    Accepts a bare array of strings as input, 
+    returns a list with a single object, 
+    where the concise_llm_prompt is a table (list of 1-item lists).
+    """
+    # Convert to the expected "table" format (List[List[str]])
+    llm_prompt_table = [[line] for line in llm_prompt]
+    # Use your existing CondenseIn, with default options.
+    body = CondenseIn(llm_prompt=llm_prompt_table)
+    out = condense_text(
+        src_table=body.llm_prompt,
+        keep_sections=body.keep_sections,
+        include_notes=body.include_notes,
+        max_bullets=body.max_bullets,
+    )
+    # Always return a list per the contract
+    return [out]

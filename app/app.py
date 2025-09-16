@@ -16,7 +16,7 @@ class CondenseIn(BaseModel):
     max_bullets: int = 0
 
 class CondenseOut(BaseModel):
-    concise_llm_prompt: List[List[str]]
+    concise_llm_prompt: List[str]  # CHANGED: Now a list of strings
     bullets: List[str]
     notes: List[str]
     stats: Dict[str, int]
@@ -25,9 +25,6 @@ class CondenseOut(BaseModel):
 # Heuristics & helpers (unchanged)
 # ------------------------------
 
-#... [same code for helpers / heuristics as before] ...
-
-# Clause/keyword patterns indicating "directive" lines to keep
 DIRECTIVE_PATTERNS = [
     r"\b(must|shall|should)\b",
     r"\b(do\s+not|don’t|never|avoid|forbid|forbidden|prohibit)\b",
@@ -104,7 +101,7 @@ def _is_heading(line: str) -> bool:
     return bool(re.match(r"^\s*rule\s*\d+|^\s*[A-Z][A-Za-z0-9 ]+—", line.strip(), flags=re.IGNORECASE))
 
 # ------------------------------
-# Modified: condense_text accepts llm_prompt as List[List[str]]!
+# Modified: concisely returns List[str], not List[List[str]]
 # ------------------------------
 def condense_text(
     src_table: List[List[str]],
@@ -112,7 +109,6 @@ def condense_text(
     include_notes: bool,
     max_bullets: int,
 ) -> CondenseOut:
-    # Flatten [["a", "b"], ["c"]] ⇒ ["a b", "c"]
     flat_lines = [" ".join([c for c in row if c is not None]) for row in src_table]
     original = "\n".join(flat_lines)
     no_code = _strip_code_fences(original)
@@ -150,9 +146,8 @@ def condense_text(
     header = (
         "Follow these rules exactly. If any bullets conflict, prioritize correctness and S/4HANA compatibility. Return ONLY what is requested."
     )
-    # For "table" output, split by "\n" into cell per line
-    all_lines = [header] + bullets  # "" blank line
-    concise_llm_prompt_table = [[l] for l in all_lines]  # Each line is a row with one cell
+    # Output as list of strings (not list of list), separated by \n if you wish in your client
+    all_lines = [header] + bullets
 
     notes_out: List[str] = []
     if include_notes:
@@ -173,7 +168,7 @@ def condense_text(
                 notes_out.append(s)
 
     return CondenseOut(
-        concise_llm_prompt=concise_llm_prompt_table,
+        concise_llm_prompt=all_lines, # <-- Output is a list of string
         bullets=bullets,
         notes=notes_out,
         stats={
@@ -191,13 +186,11 @@ def condense_text(
 @app.post("/condense", response_model=List[CondenseOut])
 async def api_condense(llm_prompt: List[str]):
     """
-    Accepts a bare array of strings as input, 
-    returns a list with a single object, 
-    where the concise_llm_prompt is a table (list of 1-item lists).
+    Accepts a bare array of strings as input,
+    returns a list with a single object,
+    where the concise_llm_prompt is a list of strings (each line).
     """
-    # Convert to the expected "table" format (List[List[str]])
     llm_prompt_table = [[line] for line in llm_prompt]
-    # Use your existing CondenseIn, with default options.
     body = CondenseIn(llm_prompt=llm_prompt_table)
     out = condense_text(
         src_table=body.llm_prompt,
@@ -205,5 +198,4 @@ async def api_condense(llm_prompt: List[str]):
         include_notes=body.include_notes,
         max_bullets=body.max_bullets,
     )
-    # Always return a list per the contract
     return [out]
